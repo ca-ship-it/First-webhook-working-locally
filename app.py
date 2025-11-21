@@ -2,6 +2,8 @@ import os
 import requests
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
+from flask import Flask, request, jsonify, Response
+
 
 load_dotenv()
 
@@ -43,6 +45,72 @@ def odoo_rpc(model, method, args=None, kwargs=None):
         raise Exception(res["error"])
 
     return res["result"]
+
+@app.route("/ig/webhook", methods=["GET", "POST"])
+def ig_webhook():
+    # 1) VERIFY KARNA (jab tum Meta me webhook set karoge)
+    if request.method == "GET":
+        verify_token = request.args.get("hub.verify_token")
+        challenge = request.args.get("hub.challenge")
+
+        if verify_token == os.getenv("VERIFY_TOKEN"):
+            return challenge or ""
+        return "Verification token mismatch", 403
+
+    # 2) REAL MESSAGES HANDLE KARNA
+    data = request.json
+    print("📩 Incoming IG webhook:", data)
+
+    try:
+        entry = data.get("entry", [])[0]
+        messaging = entry.get("messaging", [])[0]
+
+        sender_id = messaging["sender"]["id"]
+        message = messaging.get("message", {})
+        text = message.get("text", "")
+
+        print("Sender:", sender_id, "Text:", text)
+
+        # ---- Odoo me lead create karo ----
+        vals = {
+            "name": f"IG Lead - {sender_id}",
+            "phone": "",
+            "email_from": "",
+            "description": f"Insta DM: {text}",
+        }
+        lead_id = odoo_rpc("crm.lead", "create", [vals])
+        print("✅ Odoo lead from IG:", lead_id)
+
+        # ---- Auto reply DM bhejo ----
+        reply_text = "Thanks for your message! Our team will get back to you shortly."
+        send_ig_reply(sender_id, reply_text)
+
+    except Exception as e:
+        print("⚠️ Error handling IG message:", e)
+
+    return "EVENT_RECEIVED", 200
+
+
+def send_ig_reply(recipient_id, text):
+    PAGE_ACCESS_TOKEN = os.getenv("PAGE_ACCESS_TOKEN")
+    if not PAGE_ACCESS_TOKEN:
+        print("⚠️ PAGE_ACCESS_TOKEN missing")
+        return
+
+    url = f"https://graph.facebook.com/v18.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
+
+    payload = {
+        "recipient": {"id": recipient_id},
+        "message": {"text": text},
+    }
+
+    res = requests.post(url, json=payload)
+    print("IG reply status:", res.status_code, res.text)
+
+
+
+
+
 
 
 @app.route("/webhook/create_lead", methods=["POST"])
