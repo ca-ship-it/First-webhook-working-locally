@@ -72,6 +72,59 @@ def create_lead():
 def home():
     return "Webhook is running!", 200
 
+@app.route("/meta/webhook", methods=["GET", "POST"])
+def meta_webhook():
+    # ---- STEP 1: VERIFICATION ----
+    if request.method == "GET":
+        verify_token = request.args.get("hub.verify_token")
+        challenge = request.args.get("hub.challenge")
+
+        if verify_token == "my_verify_token_2025":
+            return challenge
+        return "Verification token mismatch", 403
+
+    # ---- STEP 2: HANDLE MESSAGES ----
+    data = request.json
+    print("🚀 Incoming IG DM:", data)
+
+    try:
+        messaging = data["entry"][0]["messaging"][0]
+        sender_id = messaging["sender"]["id"]
+        message_text = messaging["message"]["text"]
+
+        # Create lead in Odoo
+        vals = {
+            "name": f"IG Lead - {message_text}",
+            "phone": "",
+            "email_from": "",
+            "description": "Instagram DM Lead"
+        }
+        lead_id = odoo_rpc("crm.lead", "create", [vals])
+
+        print("Lead Created:", lead_id)
+
+        # Auto Reply to user
+        send_ig_reply(sender_id, "Thanks! We received your message.")
+
+    except Exception as e:
+        print("Error processing message:", e)
+
+    return "EVENT_RECEIVED", 200
+
+
+def send_ig_reply(recipient_id, text):
+    PAGE_ACCESS_TOKEN = os.getenv("PAGE_ACCESS_TOKEN")
+
+    url = f"https://graph.facebook.com/v18.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
+
+    payload = {
+        "recipient": {"id": recipient_id},
+        "message": {"text": text}
+    }
+
+    requests.post(url, json=payload)
+
+
 
 if __name__ == "__main__":
     app.run(port=5000, debug=True)
