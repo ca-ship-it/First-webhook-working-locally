@@ -1,11 +1,11 @@
 import requests
 
-url = "http://127.0.0.1:5000/webhook/create_lead"
+url = "https://web-production-19e3.up.railway.app/webhook/create_lead"
 
 payload = {
-    "name": "Lead from Local",
+    "name": "Lead from Railway LIVE",
     "phone": "+923001234567",
-    "email": "local@test.com"
+    "email": "railway@test.com"
 }
 
 res = requests.post(url, json=payload)
